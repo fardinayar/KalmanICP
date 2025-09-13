@@ -8,3 +8,5 @@ venv/
 .ipynb_checkpoints/
 .mypy_cache/
 .pytest_cache/
+dataset/
+logs/
