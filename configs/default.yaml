@@ -1,0 +1,104 @@
+# Default configuration for IMU+ICP SLAM (pose-only EKF)
+dataset:
+  root_dir: "/home/fardin/data/KITTI/raw"   # Path to KITTI Raw root (contains date directories)
+  date: "2011_09_26"                         # Default date; can be overridden by CLI
+  drive: "0001"                              # Default drive; can be overridden by CLI
+  frames: []                                   # Optional explicit subset of frames
+  start_frame:                                  # Optional inclusive start frame (overridden by CLI if provided)
+  end_frame:                                    # Optional inclusive end frame (overridden by CLI if provided)
+
+calibration:
+  auto_load_imu_velo: true                      # If true, load IMU<-Velodyne from KITTI calib_imu_to_velo.txt
+  # 4x4 IMU<-LiDAR extrinsic (row-major). Used to map LiDAR pose to IMU pose.
+  T_imu_velo: [
+    1.0, 0.0, 0.0, 0.0,
+    0.0, 1.0, 0.0, 0.0,
+    0.0, 0.0, 1.0, 0.0,
+    0.0, 0.0, 0.0, 1.0
+  ]
+  gravity_mag: 9.81                            # Gravity magnitude used for sanity checks
+
+filter:
+  init_from_oxts: true                           # Initialize pose from first OXTS at first LiDAR timestamp
+  init:
+    p0: [0.0, 0.0, 0.0]                        # Initial position (world frame)
+    R0_deg_rpy: [0.0, 0.0, 0.0]                # Initial orientation in roll,pitch,yaw degrees
+    # Initial error state covariance [dtheta, dp] (6x6 diagonal)
+    # dtheta variances in rad^2 (~1.8 deg std), dp variances in m^2 (~10 cm std)
+    P0_diag: [0.001, 0.001, 0.001, 0.01, 0.01, 0.01]
+  noise:
+    # KITTI OXTS-derived IMU at ~100 Hz: choose moderate process noise
+    sigma_g: 0.005                             # Gyro noise (rad/sqrt(s)) in body frame
+    sigma_a: 0.2                               # Accel noise (m/s^2/sqrt(s)) in body frame
+  static_bias_comp:
+    gyro_bias: [0.0, 0.0, 0.0]                  # Static gyro bias to subtract (rad/s)
+    accel_bias: [0.0, 0.0, 0.0]                 # Static accel bias to subtract (m/s^2)
+  gravity: [0.0, 0.0, -9.81]                    # Gravity vector in world frame
+  # EKF-specific parameters
+  ekf:
+    use_joseph_form: true                        # Use Joseph form for covariance update (numerical stability)
+    min_dt: 1e-6                                 # Minimum time step to avoid numerical issues (s)
+    max_dt: 0.05                                 # Maximum time step for single prediction (s)
+
+icp:
+  voxel_size_scan: 0.2                          # Voxel size for downsampling the current scan (m)
+  max_correspondence_dist: 1.0                  # ICP correspondence distance threshold (m)
+  max_iters: 40                                 # ICP max iterations
+  robust_delta: 1.0                             # Huber loss delta for robust estimation
+  normal_radius: 1.0                            # Radius for normal estimation (m)
+  normal_max_nn: 30                             # Max neighbors for normal estimation
+  measurement:
+    # Measurement covariance diag [roll,pitch,yaw,x,y,z]
+    # Angles are in deg^2 (converted to rad^2 internally); translations in m^2.
+    # Assumes HDL-64E ICP at 10 Hz with reasonably dense local map.
+    R_const_diag: [
+      0.02, 0.02, 0.05,   # roll, pitch, yaw (deg^2) -> ~0.14deg, 0.14deg, 0.22deg std
+      0.01, 0.01, 0.02    # x, y, z (m^2) -> ~10cm, 10cm, 14cm std
+    ]
+    per_scan_cov_file: ""                       # Optional CSV file providing per-scan covariances
+
+cakf:
+  enable: true                                  # Enable constant-velocity KF on ICP pose
+  # KITTI vehicle dynamics: moderate accelerations, smoother rotation
+  # Higher q_acc allows faster adaptation to acceleration changes
+  # Lower q_rot_acc provides more rotation smoothing
+  q_acc: 10.0                                   # Translational accel spectral density [m^2 s^-3]
+  q_rot_acc: 0.5                                # Rotational accel spectral density [rad^2 s^-3]
+  p0_pos: 0.1                                   # Initial position std [m]
+  p0_vel: 1.0                                   # Initial velocity std [m/s]
+  p0_rot: 0.05                                  # Initial rotation std [rad]
+  p0_rot_vel: 0.2                               # Initial rot-vel std [rad/s]
+
+map:
+  type: "rolling"                              # Type of map maintenance strategy (rolling)
+  keep_last_k_scans: 4                           # Number of most-recent scans to keep in the map
+  crop_radius_m: 80.0                            # Crop radius around origin for map points (m)
+  voxel_size_map: 0.2                            # Voxel size for downsampling the rolling map (m)
+  max_points: 2000000                            # Max points in map before extra downsampling
+
+logging:
+  run_root: "run_dir"                           # Root directory for run outputs
+  write_every_n: 1                               # Log progress every N lidar frames
+  save_map_every_n: 20                           # (Reserved) Save map every N frames
+  seed: 42                                       # Random seed for reproducibility
+
+export:
+  out_dir: "outputs"                            # (Reserved) Directory for exported artifacts
+  format: "kitti"                               # Trajectory format
+  also_write_tum: false                          # Also write TUM trajectory format (unused now)
+
+mode:
+  type: "cakf"        # ekf | lidar_only | imu_only | cakf   # Operating mode for this run
+
+evaluation:
+  enable: true                                   # Enable automatic evaluation with evo
+  show_plots: false                              # Show plots in a window (requires GUI)
+  save_plots: true                               # Save plots (ape.pdf, rpe.pdf) to run_dir
+  ape:
+    align: true                                  # Enable SE(3) alignment before APE
+    stats: true                                  # Print summary stats
+  rpe:
+    align: true                                  # Enable SE(3) alignment before RPE
+    delta: 1                                     # RPE delta value
+    delta_unit: "m"                              # RPE delta unit: m | s | f
+    stats: true                                  # Print summary stats

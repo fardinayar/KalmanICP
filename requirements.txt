@@ -1,0 +1,6 @@
+numpy>=1.23
+scipy>=1.9
+pyyaml>=6.0.1
+pykitti>=0.3.1
+open3d>=0.17.0
+tqdm>=4.66
